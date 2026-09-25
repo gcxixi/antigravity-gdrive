@@ -32,6 +32,14 @@ description: Manage and selectively synchronize files between local workspace an
 - **准则**：
   - 推送时**只推送本次任务改动或新增的文件**（使用 `rclone copyto <local_file> gdrive:<remote_file>`），严禁对整个网盘根目录做盲目的全量全量扫描。
 
+### 规则 4：编写与存放至网盘的文档必须强制为 Markdown 格式 (Strict Markdown Format Only)
+- **原因**：保障知识资产的高可读性、纯文本跨平台检索、低版本冲突以及智能体之间的无缝流转，杜绝富文本/二进制格式带来的碎片化。
+- **准则**：
+  1. **格式限定**：凡是用户提到“编写文档”、“整理方案”并存放到 Google Drive 的任务，**文件必须且只能为 Markdown 格式（扩展名为 `.md`）**。
+  2. **严禁格式**：严禁创建或转存为 `.docx`、`.txt`、`.pdf`、`.rtf` 等格式，绝对杜绝复合错误后缀（如 `.md.docx`）。
+  3. **排版规范**：正文使用标准 GitHub Flavored Markdown (GFM) 语法，结构完整清晰（含一级标题、层级大纲、代码块与关键警示块）。
+  4. **命名约定**：文件与目录名一律采用全小写 + 短横线连接符（`kebab-case`），例如 `docs/topics/storage/lsm-tree-compaction.md`，严禁空格与大写。
+
 ---
 
 ## 2. 常用操作命令 (Command Reference)
