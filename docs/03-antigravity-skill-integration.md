@@ -1,6 +1,6 @@
 # Antigravity 智能体技能（Skill）深度集成
 
-通过将 Google Drive 能力封装为 Google Antigravity 的标准 **Skill**，AI 助手不再只是被动响应，而是能自主理解用户的跨端协作意图，实现全自动的文档读取、修改、保存与云端同步。
+通过将 Google Drive 能力封装为 Google Antigravity 的标准 **Skill**，AI 助手不再只是被动响应，而是能自主理解用户的跨端协作意图，实现全自动的文档检索、修改、保存与云端按需同步。
 
 ---
 
@@ -16,24 +16,27 @@
 
 ---
 
-## 2. 技能定义解析 (`SKILL.md`)
+## 2. 关键设计原则：按需加载与延迟同步 (Lazy & Selective Sync)
 
-```yaml
----
-name: google-drive
-description: Manage and synchronize files between local workspace and Google Drive using rclone. Use when the user wants to list, search, read, download, upload, or synchronize files/folders with Google Drive (gdrive). 中文触发词包括“同步网盘”“拉取云盘”“上传到Google Drive”“下载网盘文件”“查看网盘”“Google Drive同步”。
----
-```
+在早期的设计中，很多集成方案倾向于使用“启动时全量同步（Full Sync）”。但在实际生产与长线使用中，这种模式存在两大严重缺陷：
+1. **本地磁盘膨胀失控**：随着云端积累大量的音视频切片、大体积 PDF 电子书与历史备份，全量镜像下载会迅速占满开发机磁盘。
+2. **多轮对话下的中间态污染**：本地多轮任务中，代码或技术方案往往会经历数轮推演与草稿修改。如果在每轮会话中都急于向云端推送，不仅浪费 API 配额，而且会用大量的半成品草稿污染云端历史版本。
 
-### 关键指令设计：
-1. **明确约定远端名称与本地目录**：
-   - 远端标识约定为 `gdrive:`。
-   - 本地统一落地在 `$WORKSPACE_ROOT/gdrive`（或工程子目录），保证文件组织结构清晰。
-2. **区分拉取（Pull）与推送（Push）的安全性**：
-   - 上传时推荐使用 `rclone copy` 而非 `rclone sync`，防止本地误删导致云端数据意外丢失。
-   - 云端镜像更新时采用 `rclone sync`，确保本地文件与云端保持最新一致。
-3. **支持轻量级单文件直读**：
-   - 提供 `rclone cat gdrive:<path>` 操作，当用户只想快速查看远端某个单文档内容时，无需先全量下载几十兆的目录。
+因此，本项目制定了三大核心准则：
+
+### 准则 1：零磁盘占用在线查阅（Zero-Disk Inspection）
+- **列目录/搜索**：直接在线读取远端元数据（`rclone lsf`），不落本地盘。
+- **阅读正文**：使用 `rclone cat gdrive:<path>` 直接在内存/标准输出中查看文件正文，无需先下载几十兆的目录结构。
+
+### 准则 2：本地沉浸式多轮编辑，延迟至终态同步（Deferred Sync）
+- **开发与推演中**：本地工作区尽情读写、重构与校验，AI 助手不主动向云端推送中间草稿。
+- **触发同步条件**：
+  - **显式触发**：用户在对话中明确要求“同步到网盘”、“推送到云端”；
+  - **任务完成**：多轮交付流程全部结束，成果定稿后向用户确认归档。
+
+### 准则 3：精准单文件与子目录差量同步（Selective Incremental Push/Pull）
+- 拒绝全量根目录 `rclone sync`。
+- 拉取或推送仅针对本次修改涉及的具体文件（`rclone copyto`）或细分子目录，且默认过滤 `media/**` 重媒体。
 
 ---
 
@@ -41,23 +44,28 @@ description: Manage and synchronize files between local workspace and Google Dri
 
 打通之后，用户可以使用完全自然的语言与 Antigravity 交互：
 
-### 场景 1：需求检索与分析
-> **用户输入**：“*帮我看下 Google Drive 里最近更新的架构设计文档，提取关于状态机的核心逻辑并进行总结。*”  
+### 场景 1：零磁盘占用的技术方案在线检索与解析
+> **用户输入**：“*帮我检索 Google Drive 里关于架构设计的文档，总结分布式状态机的核心设计。*”  
 > **Agent 内部流转**：
 > 1. 触发 `google-drive` Skill；
-> 2. 自动检查本地 `gdrive/` 目录；如果文件未同步，自动执行 `rclone sync gdrive: gdrive/`；
-> 3. 使用 `view_file` 原生工具快速读取 Markdown 文档并提炼总结。
+> 2. 执行 `rclone lsf gdrive:docs/architecture/` 在线发现相关文档；
+> 3. 调用 `rclone cat gdrive:docs/architecture/distributed-systems/state-machine.md` 在线读取正文；
+> 4. 提炼核心架构要点向用户汇报，全程**本地磁盘零占用**。
 
-### 场景 2：代码与文档生成自动归档
-> **用户输入**：“*将我们刚才推演生成的分布式缓存高可用架构方案整理成文档，直接存放到 Google Drive 的‘架构设计’目录下，并同步上云。*”  
+### 场景 2：多轮复杂推演与终态精准归档
+> **用户输入**：“*根据我们讨论的架构，在本地编写一份 ClickHouse 分布式表高可用选型方案，并进行多轮完善。*”  
 > **Agent 内部流转**：
-> 1. 调用 `write_to_file` 将结构化文档保存至 `gdrive/架构设计/cache-ha.md`；
-> 2. 调用终端执行 `rclone copy gdrive/架构设计 gdrive:架构设计`；
-> 3. 汇报完成，并给出云端与本地路径索引。
+> 1. **第 1~N 轮**：在本地 `gdrive/docs/topics/clickhouse/ha-selection.md` 中进行深度的推演、排版与推敲，中间轮次不触碰云端；
+> 2. **交付轮次**：用户输入：“*方案确认无误，同步到 Google Drive 上吧。*”
+> 3. Agent 仅针对该文件执行精准推送：
+>    ```bash
+>    ./scripts/sync_gdrive.sh push docs/topics/clickhouse/ha-selection.md
+>    ```
+> 4. 汇报同步成功，版本干净且安全。
 
-### 场景 3：定时任务与自动化同步
-结合 Antigravity 的 `/schedule` 斜杠指令，可以轻松配置每天或每小时的自动双向同步：
+### 场景 3：定时状态核查
+结合 Antigravity 的 `/schedule` 斜杠指令，可以配置轻量的容量检查：
 ```text
-/schedule 每 30 分钟同步一次本地工作区与 Google Drive 的变更
+/schedule 每天早晨 10 点检查 Google Drive 云端与本地工作区的存储占用差异
 ```
-Agent 将在后台挂载轻量 Cron 任务执行 `sync_gdrive.sh pull` 与 `push`。
+Agent 执行 `./scripts/sync_gdrive.sh status` 并向用户输出容量报告。

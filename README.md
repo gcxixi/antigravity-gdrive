@@ -28,8 +28,9 @@
 - ⚡️ **100% 无头环境友好**：无需物理显示屏，无需任何 VNC 或远程桌面支持。
 - 🔑 **逆向中继授权（Reverse Relay）**：利用本地已登录 Google 账号的浏览器，仅需一次点击与 URL 复制，10 秒内完成 OAuth 2.0 握手闭环。
 - 🛡️ **长效免维护**：生成长效 `refresh_token`，由底层引擎在后台静默自动续期，告别 7 天过期困扰。
-- 🚀 **原生 SSD 性能**：采用“本地工作区镜像 + 差量同步”架构，AI 智能体读取与正则检索享用微秒级本地文件速度。
-- 🤖 **深度集成 Antigravity Skill**：提供开箱即用的 Antigravity 技能，让 AI 自然语言理解“拉取网盘”、“备份设计方案”等意图。
+- 📦 **按需获取与零磁盘膨胀**：支持基于元数据在线速览（cat/lsf），拒绝无节制全量下载，有效防止媒体与海量文档侵占本地磁盘。
+- ⏳ **多轮会话延迟同步（Deferred Sync）**：本地任务多轮迭代沉浸编辑，避免中间草稿污染云端历史，待交付或用户明确指令后再精准推送到云端。
+- 🤖 **深度集成 Antigravity Skill**：提供开箱即用的 Antigravity 技能，让 AI 自然语言理解“按需拉取”、“备份设计方案”等意图。
 
 ---
 
@@ -109,14 +110,17 @@ cd antigravity-gdrive
    chmod 600 ~/.config/rclone/rclone.conf
    ```
 
-### 第三步：验证连通并进行初始化同步
+### 第三步：验证连通与按需查看
 
 ```bash
 # 测试列出网盘顶层目录
 rclone lsf gdrive:
 
-# 初始化同步至本地工作区
-./scripts/sync_gdrive.sh pull
+# 检查网盘与本地存储状态
+./scripts/sync_gdrive.sh status
+
+# 在线直接查看指定远端文件（零磁盘占用）
+./scripts/sync_gdrive.sh cat docs/topics/clickhouse/readme.md
 ```
 
 ### 第四步：启用 Antigravity Skill
